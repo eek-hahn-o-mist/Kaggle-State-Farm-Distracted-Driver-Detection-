@@ -113,12 +113,13 @@ def restore_data(path):
 
 
 
-def model_create_v1():
+def model_create_v1(num_input):
     
     model = Sequential()
-    model.add(Dense(1, input_dim = 4))
+    model.add(Dense(1, input_dim = num_input))
     model.add(Activation('sigmoid'))
     model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
+    return model
 
 
 def model_create_v2(img_rows, img_cols):
@@ -158,27 +159,51 @@ def model_create_v2(img_rows, img_cols):
 #cache_data_test (path, img_rows=20, img_cols=20)
 
 
-img_rows = 20; img_cols = 20; train_size =10
-train_data, train_target, driver_id = load_train(path, img_rows = 20, img_cols = 20, train_size =10)
 
-# change the list to the numpy array
-train_data = np.array(train_data, dtype=np.uint8)
-train_target = np.array(train_target, dtype=np.uint8)
-train_data = train_data.reshape(train_data.shape[0], 1, img_rows, img_cols)
+## Test CNN 2D
+def test_cnn2():
+    img_rows = 20; img_cols = 20; train_size =10
+    train_data, train_target, driver_id = load_train(path, img_rows = 20, img_cols = 20, train_size =10)
+    
+    # change the list to the numpy array
+    train_data = np.array(train_data, dtype=np.uint8)
+    train_target = np.array(train_target, dtype=np.uint8)
+    train_data = train_data.reshape(train_data.shape[0], 1, img_rows, img_cols)
+    
+    
+    # change the array to the matrix 
+    train_target = np_utils.to_categorical(train_target, 10)
+    train_data = train_data.astype('float32')
+    # normalization 
+    train_data /= 255
+    
+    
+    
+    ## Test CNN 2D
+    model = model_create_v2(img_rows, img_cols)
+    out = model.fit(train_data, train_target, nb_epoch = 50, batch_size = 50)
+    return out
+
+## Test NN
+def test_cnn2():
+    img_rows = 20; img_cols = 20; train_size =10
+    train_data, train_target, driver_id = load_train(path, img_rows = 20, img_cols = 20, train_size =10)
+    
+    train_data = [item.flatten() for item in train_data]
+    
+    train_data = np.array(train_data, dtype=np.uint8)
+    train_target = np.array(train_target, dtype=np.uint8)
+    train_data = train_data.astype('float32')
+    # normalization 
+    train_data /= 255
+    
+    # number of input is img_rows * img_cols
+    num_input = img_rows * img_cols
+    model = model_create_v1(num_input)
+    out = model.fit(train_data, train_target, nb_epoch = 50, batch_size = 50)
 
 
-# change the array to the matrix 
-train_target = np_utils.to_categorical(train_target, 10)
-train_data = train_data.astype('float32')
-# normalization 
-train_data /= 255
+test_cnn2()
 
 
-model = model_create_v2(img_rows, img_cols)
-
-out = model.fit(train_data, train_target, nb_epoch = 50, batch_size = 50)
-
-#print('Train shape:', train_data.shape)
-#print(train_data.shape[0], 'train samples')
-
-
+ 
