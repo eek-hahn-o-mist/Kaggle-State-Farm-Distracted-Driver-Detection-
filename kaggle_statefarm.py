@@ -185,7 +185,7 @@ def test_cnn2():
     return out
 
 ## Test NN
-def test_cnn2():
+def test_nn():
     img_rows = 20; img_cols = 20; train_size =10
     train_data, train_target, driver_id = load_train(path, img_rows = 20, img_cols = 20, train_size =10)
     
@@ -203,7 +203,7 @@ def test_cnn2():
     out = model.fit(train_data, train_target, nb_epoch = 50, batch_size = 50)
 
 
-test_cnn2()
-
+#test_cnn2()
+test_nn()
 
  
