@@ -21,13 +21,19 @@ from keras.optimizers import SGD
 from sklearn.cross_validation import train_test_split
 from sklearn.metrics import log_loss, classification_report
 import time
+import pandas as pd 
+
+global img_rows
+global img_cols
+
 
 
 
 #path = "\Users\yuexinmao\Desktop\StateFarm"
 #path = "/Users/yuexinmao/Desktop/StateFarm"
-
 path = "E:\Dropbox\StateFarm"
+
+
 
 uniq_driver =['p002',
  'p012',
@@ -106,7 +112,7 @@ def load_train(path, img_rows, img_cols, train_size):  # train_size: number of s
 
 
 def load_test(path, img_rows, img_cols):
-    x_test = [];  y_test_id = [];    
+    x_test = [];  img_name = [];    
  
     path_c = os.path.join(path, 'test', '*.jpg')
     print(path_c)
@@ -118,8 +124,8 @@ def load_test(path, img_rows, img_cols):
         img_resize = cv2.resize(img, (img_cols, img_rows))
             
         x_test.append(img_resize)
-        y_test_id.append(flbase)
-    return x_test, y_test_id
+        img_name.append(flbase)
+    return x_test, img_name
     
 
 def cache_data_train (path, img_rows, img_cols, train_size):
@@ -133,10 +139,10 @@ def cache_data_train (path, img_rows, img_cols, train_size):
     
 def cache_data_test (path, img_rows, img_cols):
     
-    x_test, y_test_id = load_test(path, img_rows, img_cols)
-    path_t = os.path.join(path, 'Test_r' + str(img_rows) + '_c' + str(img_rows) +'.dat')
+    x_test, img_name = load_test(path, img_rows, img_cols)
+    path_t = os.path.join(path, 'Test_r' + str(img_rows) + '_c' + str(img_cols) +'.dat')
     file = open(path_t, 'wb')
-    pickle.dump((x_test, x_test), file)
+    pickle.dump((x_test, img_name), file)
     file.close()
     
 #def split_validation_set(train, target, test_size):
@@ -165,11 +171,11 @@ def model_create_v1(num_input):
 
 def model_create_v2(img_rows, img_cols):
     nb_classes = 10
-    # number of convolutional filters to use
+    ## number of convolutional filters to use
     nb_filters = 8
     # size of pooling area for max pooling
     nb_pool = 2
-    # convolution kernel size
+    ## convolution kernel size
     nb_conv = 2
     model = Sequential()
     
@@ -198,7 +204,7 @@ def model_create_v2(img_rows, img_cols):
 def train_data_normalize(train_data, train_target, driver_id):
     
     
-    # change the list to the numpy array
+    ## change the list to the numpy array
     train_data = np.array(train_data, dtype=np.uint8)
     train_target = np.array(train_target, dtype=np.uint8)
     print train_data.shape[0]
@@ -212,6 +218,17 @@ def train_data_normalize(train_data, train_target, driver_id):
     
     return train_data, train_target, driver_id
     
+
+def test_data_normalize(test_data,  img_name):
+        
+    ## change the list to the numpy array
+    test_data = np.array(test_data, dtype=np.uint8)
+    test_data = test_data.reshape(test_data.shape[0], 1, img_rows, img_cols)
+    # change the array to the matrix 
+    test_data = test_data.astype('float32')
+    # normalization 
+    test_data /= 255  
+    return test_data, img_name
 
 
 #def test_data_load_normalize
@@ -232,85 +249,134 @@ def copy_selected_drivers(train_data, train_target, driver_id, driver_list):
     return data, target, index
 
 
-# train_size: number of samples selected in each class folder,  
-# img_rows: resize row index  
-# img_cols: resize column index
 
 
 
-#　Ｇｅｎｅｒａｔｅ　ａ　ｄａｔ　ｆｉｌｅ　ｗｉｔｈ　ｐａｒａｍｅｔｅｒ　img_rows，　img_ｃｏｌｓ　ａｎｄ　train_size　
+
+def validation_single_driver(input_file):
+    
+    start_time = time.time()
+    
+    ## Load dat file 
+    train_data, train_target, driver_id = restore_data(input_file)
+    
+    #img_rows = len(train_data[0])
+    #img_cols = len(train_data[0][0])
+         
+    ## data normalization
+    train_data, train_target, driver_id = train_data_normalize(train_data, train_target, driver_id)
+    
+    ## There are 26 unique drives, we use data of 25 drivers for training and data for the rest 1 drive for validation  
+    
+    temp_index = 0  # put into a for loop if want to test all the 26 drivers
+    driverlist_validation = [uniq_driver[temp_index]]
+    
+    driverlist_train = uniq_driver  
+    driverlist_train.remove(driverlist_validation[0])
+    
+    
+    X_train, Y_train, train_ind = copy_selected_drivers(train_data, train_target, driver_id, driverlist_train)
+    X_valid, Y_valid, test_ind = copy_selected_drivers(train_data, train_target, driver_id, driverlist_validation)
+    
+    
+    model1 = model_create_v2(img_rows, img_cols)
+    #out2 = model1.fit(X_train, Y_train, nb_epoch = 50, batch_size = 50)
+    out2 = model1.fit(X_train, Y_train, batch_size=32, nb_epoch=2,
+                  show_accuracy=True, verbose=1, validation_data=(X_valid, Y_valid))
+    
+    predictions_valid = model1.predict(X_valid, batch_size=128, verbose=1)
+    
+    ## log_loss metric 
+    score = log_loss(Y_valid, predictions_valid)
+    print('Score log_loss: ', score)
+    
+    
+    y_train_dic = dict()
+    y_true_class = []
+    y_pred_class = []
+    target_names = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8' ,'c9']
+    
+    
+    for i in range(len(test_ind)):
+        y_train_dic[test_ind[i]] = predictions_valid[i]
+        
+        #max_ind_true = np.argmax(Y_valid[i])
+        y_true_class.append(np.argmax(Y_valid[i]))
+        #target_names.append('c'+str(max_ind_true))          
+        y_pred_class.append(np.argmax(predictions_valid[i]))
+         
+    ## classification metric
+    print(classification_report(y_true_class, y_pred_class, target_names = target_names ))    
+    print("Total run time for validation:  %s seconds " % (time.time() - start_time))
+    
+    return model1
+
+
+
+def prediction_test_driver(input_testing_file, model, path):
+
+    start_time = time.time()
+    ## Load dat file 
+    test_data, img_name = restore_data(input_testing_file)
+    
+    ## data normalization
+    test_data, img_name = test_data_normalize(test_data, img_name)
+    predictions = model.predict(test_data, batch_size=128, verbose=1)
+    output = pd.DataFrame(predictions, columns=['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'])
+    output.insert(0, 'img', img_name)
+    
+    path = os.path.join(path, 'submission_r' + str(img_rows) + '_c' + str(img_cols) + '.csv')
+    output.to_csv(path, index=False)
+    
+    print("Total run time for predication:  %s seconds " % (time.time() - start_time))
+
+
+
+
+
+
+
+
+## train_size: number of samples selected in each class folder,  
+## img_rows: resize row index  
+## img_cols: resize column index
+
+
+
+##　Ｇｅｎｅｒａｔｅ　ａ　ｄａｔ　ｆｉｌｅ　ｗｉｔｈ　ｐａｒａｍｅｔｅｒ　img_rows，　img_ｃｏｌｓ　ａｎｄ　train_size　
+
+## cache data in the test folder  
+#cache_data_test(path, img_rows = 24, img_cols = 32)
+
+## cache data in the train folder  
 #cache_data_train(path, img_rows = 480, img_cols = 640, train_size = 10)
 #cache_data_train(path, img_rows = 24, img_cols = 32, train_size = float('inf'))
+#cache_data_train(path, img_rows = 96, img_cols = 128, train_size = float('inf'))
+#cache_data_train(path, img_rows = 48, img_cols = 64, train_size = float('inf'))
+#cache_data_train(path, img_rows = 12, img_cols = 16, train_size = float('inf'))
+#cache_data_train(path, img_rows = 6, img_cols = 8, train_size = float('inf'))
+
+ 
 
 
 
+## cache data in the train folder, will save a file 'Train_r<img_rows>_c<img_cols>_tsize<train_size>.dat'
+#cache_data_train(path, img_rows = 24, img_cols = 32, train_size = float('inf'))
 
-#################### Run a Single Case ####################
-#==============================================================================
-# 
-# 
-# start_time = time.time()
-# 
-# 
-# # Load dat file 
-# train_data, train_target, driver_id = restore_data('Train_r24_c32_tsizeinf.dat')
-# 
-# img_rows = len(train_data[0])
-# img_cols = len(train_data[0][0])
-# 
-# global img_rows
-# global img_cols
-# 
-# # data normalization
-# train_data, train_target, driver_id = train_data_normalize(train_data, train_target, driver_id)
-# 
-# # There are 26 unique drives, we use data of 25 drivers for training and data for the rest 1 drive for validation  
-# 
-# temp_index = 0  # put into a for loop if want to test all the 26 drivers
-# driverlist_validation = [uniq_driver[temp_index]]
-# 
-# driverlist_train = uniq_driver  
-# driverlist_train.remove(driverlist_validation[0])
-# 
-# 
-# X_train, Y_train, train_ind = copy_selected_drivers(train_data, train_target, driver_id, driverlist_train)
-# X_valid, Y_valid, test_ind = copy_selected_drivers(train_data, train_target, driver_id, driverlist_validation)
-# 
-# 
-# model1 = model_create_v2(img_rows, img_cols)
-# #out2 = model1.fit(X_train, Y_train, nb_epoch = 50, batch_size = 50)
-# out2 = model1.fit(X_train, Y_train, batch_size=32, nb_epoch=2,
-#               show_accuracy=True, verbose=1, validation_data=(X_valid, Y_valid))
-# 
-# predictions_valid = model1.predict(X_valid, batch_size=128, verbose=1)
-# 
-# # log_loss metric 
-# score = log_loss(Y_valid, predictions_valid)
-# print('Score log_loss: ', score)
-# 
-# 
-# y_train_dic = dict()
-# y_true_class = []
-# y_pred_class = []
-# target_names = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8' ,'c9']
-# 
-# 
-# for i in range(len(test_ind)):
-#     y_train_dic[test_ind[i]] = predictions_valid[i]
-#     
-#     max_ind_true = np.argmax(Y_valid[i])
-#     y_true_class.append(np.argmax(Y_valid[i]))
-#     #target_names.append('c'+str(max_ind_true)) 
-#      
-#     y_pred_class.append(np.argmax(predictions_valid[i]))
-#      
-# # classification metric
-# print(classification_report(y_true_class, y_pred_class, target_names = target_names ))
-# 
-# 
-# 
-# print("Total run time:  %s seconds " % (time.time() - start_time))
-#==============================================================================
+## cache data in the test folder,  will save a file 'Test_r<img_rows>_c<img_cols>.dat'  
+#cache_data_test(path, img_rows = 24, img_cols = 32)
 
+## Run a single driver validation Case
+input_training_file = 'Train_r24_c32_tsizeinf.dat'
+img_rows = 24
+img_cols = 32
 
+model1 = validation_single_driver(input_training_file)
 
+## Run a predication case for all the picturs in the test folder 
+input_testing_file = 'Test_r24_c32.dat'
+prediction_test_driver(input_testing_file, model1, path)
+
+ 
+
+ 
